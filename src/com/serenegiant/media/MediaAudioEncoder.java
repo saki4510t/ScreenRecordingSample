@@ -139,28 +139,40 @@ public class MediaAudioEncoder extends MediaEncoder {
 				}
 				if (audioRecord != null) {
 		            try {
-						if (mIsCapturing) {
-		    				if (DEBUG) Log.v(TAG, "AudioThread:start audio recording");
-							final ByteBuffer buf = ByteBuffer.allocateDirect(SAMPLES_PER_FRAME);
-			                int readBytes;
-			                audioRecord.startRecording();
-			                try {
-					    		for (; mIsCapturing && !mRequestStop && !mIsEOS ;) {
-					    			// read audio data from internal mic
-									buf.clear();
-					    			readBytes = audioRecord.read(buf, SAMPLES_PER_FRAME);
-					    			if (readBytes > 0) {
-					    			    // set audio data to encoder
-										buf.position(readBytes);
-										buf.flip();
-					    				encode(buf, readBytes, getPTSUs());
-					    				frameAvailableSoon();
-					    			}
-					    		}
-			    				frameAvailableSoon();
-			                } finally {
-			                	audioRecord.stop();
-			                }
+						for ( ; mIsCapturing ; ) {
+							synchronized (mSync) {
+								if (mIsCapturing && !mRequestStop && mRequestPause) {
+									try {
+										mSync.wait();
+									} catch (final InterruptedException e) {
+										break;
+									}
+									continue;
+								}
+							}
+							if (mIsCapturing && !mRequestStop && !mRequestPause) {
+			    				if (DEBUG) Log.v(TAG, "AudioThread:start audio recording");
+								final ByteBuffer buf = ByteBuffer.allocateDirect(SAMPLES_PER_FRAME);
+				                int readBytes;
+				                audioRecord.startRecording();
+				                try {
+						    		for (; mIsCapturing && !mRequestStop && !mRequestPause && !mIsEOS ;) {
+						    			// read audio data from internal mic
+										buf.clear();
+						    			readBytes = audioRecord.read(buf, SAMPLES_PER_FRAME);
+						    			if (readBytes > 0) {
+						    			    // set audio data to encoder
+											buf.position(readBytes);
+											buf.flip();
+						    				encode(buf, readBytes, getPTSUs());
+						    				frameAvailableSoon();
+						    			}
+						    		}
+				    				frameAvailableSoon();
+				                } finally {
+				                	audioRecord.stop();
+				                }
+							}
 		            	}
 		            } finally {
 		            	audioRecord.release();

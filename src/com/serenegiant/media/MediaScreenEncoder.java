@@ -56,7 +56,7 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 		if (DEBUG) Log.i(TAG, "prepare: ");
 		mSurface = prepare_surface_encoder(MIME_TYPE, FRAME_RATE);
         mMediaCodec.start();
-        mIsRunning = true;
+        mIsCapturing = true;
         new Thread(mScreenCaptureTask, "ScreenCaptureThread").start();
         if (DEBUG) Log.i(TAG, "prepare finishing");
         if (mListener != null) {
@@ -72,36 +72,48 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 	@Override
 	void stopRecording() {
 		if (DEBUG) Log.v(TAG,  "stopRecording:");
-		mIsRunning = false;
+		mIsCapturing = false;
 		super.stopRecording();
 	}
 
-
-	private final Object mSync = new Object();
-	private volatile boolean mIsRunning;
 	private final Runnable mScreenCaptureTask = new Runnable() {
 		@Override
 		public void run() {
 		    if (DEBUG) Log.d(TAG,"setup VirtualDisplay");
-		    final VirtualDisplay display = mMediaProjection.createVirtualDisplay(
-			    	"Capturing Display",
-				    mWidth, mHeight, mDensity,
-				    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-				    mSurface, null, null);
-			if (DEBUG) Log.v(TAG,  "screen capture loop:display=" + display);
-		    if (display != null) {
-				for ( ; mIsRunning; ) {
-					synchronized (mSync) {
+		    for ( ; mIsCapturing ; ) {
+				synchronized (mSync) {
+					if (mIsCapturing && !mRequestStop && mRequestPause) {
 						try {
-							mSync.wait(40);
-							frameAvailableSoon();
+							mSync.wait();
 						} catch (final InterruptedException e) {
 							break;
 						}
+						continue;
 					}
 				}
-				if (DEBUG) Log.v(TAG,  "release VirtualDisplay");
-				display.release();
+				if (mIsCapturing && !mRequestStop && !mRequestPause) {
+				    final VirtualDisplay display = mMediaProjection.createVirtualDisplay(
+					    "Capturing Display",
+						mWidth, mHeight, mDensity,
+						DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+						mSurface, null, null);
+					if (DEBUG) Log.v(TAG,  "screen capture loop:display=" + display);
+				    if (display != null) {
+						for ( ; mIsCapturing && !mRequestStop && !mRequestPause && !mIsEOS; ) {
+							synchronized (mSync) {
+								try {
+									mSync.wait(40);
+									frameAvailableSoon();
+								} catch (final InterruptedException e) {
+									break;
+								}
+							}
+						}
+						frameAvailableSoon();
+						if (DEBUG) Log.v(TAG,  "release VirtualDisplay");
+						display.release();
+				    }
+				}
 		    }
 			if (DEBUG) Log.v(TAG,  "tear down MediaProjection");
 		    if (mMediaProjection != null) {

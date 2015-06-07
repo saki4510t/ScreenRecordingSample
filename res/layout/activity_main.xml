@@ -48,4 +48,14 @@
         android:textColor="#ffff0000"
         android:textSize="24sp" />
 
+    <ToggleButton
+        android:id="@+id/pause_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignLeft="@+id/record_button"
+        android:layout_below="@+id/record_button"
+        android:text="ToggleButton"
+        android:textOff="PAUSE"
+        android:textOn="RESUME" />
+
 </RelativeLayout>

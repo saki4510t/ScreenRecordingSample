@@ -41,13 +41,16 @@ public class ScreenRecorderService extends IntentService {
 	private static final boolean DEBUG = false;
 	private static final String TAG = "ScreenRecorderService";
 
-	private static final String BASE = "com.serenegiant.service.ScreenRecorderService";
-	public static final String ACTION_START = BASE + "action/start";
-	public static final String ACTION_STOP = BASE + "action/stop";
-	public static final String ACTION_QUERY = BASE + "action/query";
-	public static final String ACTION_QUERY_RESULT = BASE + "action/query_result";
-	public static final String EXTRA_RESULT_CODE = BASE + "extra/result_code";
-	public static final String EXTRA_QUERY_RESULT = BASE + "extra/result_query";
+	private static final String BASE = "com.serenegiant.service.ScreenRecorderService.";
+	public static final String ACTION_START = BASE + "ACTION_START";
+	public static final String ACTION_STOP = BASE + "ACTION_STOP";
+	public static final String ACTION_PAUSE = BASE + "ACTION_PAUSE";
+	public static final String ACTION_RESUME = BASE + "ACTION_RESUME";
+	public static final String ACTION_QUERY_STATUS = BASE + "ACTION_QUERY_STATUS";
+	public static final String ACTION_QUERY_STATUS_RESULT = BASE + "ACTION_QUERY_STATUS_RESULT";
+	public static final String EXTRA_RESULT_CODE = BASE + "EXTRA_RESULT_CODE";
+	public static final String EXTRA_QUERY_RESULT_RECORDING = BASE + "EXTRA_QUERY_RESULT_RECORDING";
+	public static final String EXTRA_QUERY_RESULT_PAUSING = BASE + "EXTRA_QUERY_RESULT_PAUSING";
 
 	private static Object sSync = new Object();
 	private static MediaMuxerWrapper sMuxer;
@@ -75,20 +78,26 @@ public class ScreenRecorderService extends IntentService {
 		} else if (ACTION_STOP.equals(action)) {
 			stopScreenRecord();
 			updateStatus();
-		} else if (ACTION_QUERY.equals(action)) {
+		} else if (ACTION_QUERY_STATUS.equals(action)) {
 			updateStatus();
+		} else if (ACTION_PAUSE.equals(action)) {
+			pauseScreenRecord();
+		} else if (ACTION_RESUME.equals(action)) {
+			resumeScreenRecord();
 		}
 	}
 
 	private void updateStatus() {
-		final boolean isRecording;
+		final boolean isRecording, isPausing;
 		synchronized (sSync) {
-			isRecording = sMuxer != null;
+			isRecording = (sMuxer != null);
+			isPausing = isRecording ? sMuxer.isPaused() : false;
 		}
 		final Intent result = new Intent();
-		result.setAction(ACTION_QUERY_RESULT);
-		result.putExtra(EXTRA_QUERY_RESULT, isRecording);
-		if (DEBUG) Log.v(TAG, "sendBroadcast:isRecording=" + isRecording);
+		result.setAction(ACTION_QUERY_STATUS_RESULT);
+		result.putExtra(EXTRA_QUERY_RESULT_RECORDING, isRecording);
+		result.putExtra(EXTRA_QUERY_RESULT_PAUSING, isPausing);
+		if (DEBUG) Log.v(TAG, "sendBroadcast:isRecording=" + isRecording + ",isPausing=" + isPausing);
 		sendBroadcast(result);
 	}
 
@@ -139,6 +148,22 @@ public class ScreenRecorderService extends IntentService {
 				sMuxer.stopRecording();
 				sMuxer = null;
 				// you should not wait here
+			}
+		}
+	}
+
+	private void pauseScreenRecord() {
+		synchronized (sSync) {
+			if (sMuxer != null) {
+				sMuxer.pauseRecording();
+			}
+		}
+	}
+
+	private void resumeScreenRecord() {
+		synchronized (sSync) {
+			if (sMuxer != null) {
+				sMuxer.resumeRecording();
 			}
 		}
 	}

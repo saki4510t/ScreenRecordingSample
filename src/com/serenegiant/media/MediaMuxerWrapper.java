@@ -47,6 +47,7 @@ public class MediaMuxerWrapper {
 	private final MediaMuxer mMediaMuxer;	// API >= 18
 	private int mEncoderCount, mStatredCount;
 	private boolean mIsStarted;
+	private volatile boolean mIsPaused;
 	private MediaEncoder mVideoEncoder, mAudioEncoder;
 
 	/**
@@ -95,6 +96,26 @@ public class MediaMuxerWrapper {
 
 	public synchronized boolean isStarted() {
 		return mIsStarted;
+	}
+
+	public synchronized void pauseRecording() {
+		mIsPaused = true;
+		if (mVideoEncoder != null)
+			mVideoEncoder.pauseRecording();
+		if (mAudioEncoder != null)
+			mAudioEncoder.pauseRecording();
+	}
+
+	public synchronized void resumeRecording() {
+		if (mVideoEncoder != null)
+			mVideoEncoder.resumeRecording();
+		if (mAudioEncoder != null)
+			mAudioEncoder.resumeRecording();
+		mIsPaused = false;
+	}
+
+	public synchronized boolean isPaused() {
+		return mIsPaused;
 	}
 
 //**********************************************************************
@@ -167,8 +188,9 @@ public class MediaMuxerWrapper {
 	 * @param bufferInfo
 	 */
 	/*package*/ synchronized void writeSampleData(final int trackIndex, final ByteBuffer byteBuf, final MediaCodec.BufferInfo bufferInfo) {
-		if (mStatredCount > 0)
+		if (mStatredCount > 0) {
 			mMediaMuxer.writeSampleData(trackIndex, byteBuf, bufferInfo);
+		}
 	}
 
 //**********************************************************************

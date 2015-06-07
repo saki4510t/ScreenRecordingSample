@@ -83,6 +83,9 @@ public abstract class MediaEncoder implements Runnable {
 
     protected final MediaEncoderListener mListener;
 
+    protected volatile boolean mRequestPause;
+	private long mLastPausedTimeUs;
+
     public MediaEncoder(final MediaMuxerWrapper muxer, final MediaEncoderListener listener) {
     	if (listener == null) throw new NullPointerException("MediaEncoderListener is null");
     	if (muxer == null) throw new NullPointerException("MediaMuxerWrapper is null");
@@ -184,6 +187,7 @@ public abstract class MediaEncoder implements Runnable {
 		synchronized (mSync) {
 			mIsCapturing = true;
 			mRequestStop = false;
+			mRequestPause = false;
 			mSync.notifyAll();
 		}
 	}
@@ -201,6 +205,30 @@ public abstract class MediaEncoder implements Runnable {
 			mSync.notifyAll();
 	        // We can not know when the encoding and writing finish.
 	        // so we return immediately after request to avoid delay of caller thread
+		}
+	}
+
+	/*package*/ void pauseRecording() {
+		if (DEBUG) Log.v(TAG, "pauseRecording");
+		synchronized (mSync) {
+			if (!mIsCapturing || mRequestStop) {
+				return;
+			}
+			mRequestPause = true;
+			mLastPausedTimeUs = System.nanoTime() / 1000;
+			mSync.notifyAll();
+		}
+	}
+
+	/*package*/ void resumeRecording() {
+		if (DEBUG) Log.v(TAG, "resumeRecording");
+		synchronized (mSync) {
+			if (!mIsCapturing || mRequestStop) {
+				return;
+			}
+			offsetPTSUs = mLastPausedTimeUs - System.nanoTime() / 1000;
+			mRequestPause = false;
+			mSync.notifyAll();
 		}
 	}
 
@@ -362,9 +390,11 @@ LOOP:	while (mIsCapturing) {
                         throw new RuntimeException("drain:muxer hasn't started");
                     }
                     // write encoded data to muxer(need to adjust presentationTimeUs.
-                   	mBufferInfo.presentationTimeUs = getPTSUs();
-                   	muxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
-					prevOutputPTSUs = mBufferInfo.presentationTimeUs;
+                    if (!mRequestPause) {
+	                   	mBufferInfo.presentationTimeUs = getPTSUs();
+	                   	muxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
+						prevOutputPTSUs = mBufferInfo.presentationTimeUs;
+                    }
                 }
                 // return buffer to encoder
                 mMediaCodec.releaseOutputBuffer(encoderStatus, false);
@@ -381,12 +411,17 @@ LOOP:	while (mIsCapturing) {
      * previous presentationTimeUs for writing
      */
 	private long prevOutputPTSUs = 0;
+
+	private long offsetPTSUs = 0;
 	/**
 	 * get next encoding presentationTimeUs
 	 * @return
 	 */
     protected long getPTSUs() {
-		long result = System.nanoTime() / 1000L;
+    	long result;
+		synchronized (mSync) {
+			result = System.nanoTime() / 1000L - offsetPTSUs;
+		}
 		// presentationTimeUs should be monotonic
 		// otherwise muxer fail to write
 		if (result < prevOutputPTSUs)

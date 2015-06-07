@@ -45,7 +45,8 @@ public final class MainActivity extends Activity {
 
 	private static final int REQUEST_CODE_SCREEN_CAPTURE = 1;
 
-	private ToggleButton mButton;
+	private ToggleButton mRecordButton;
+	private ToggleButton mPauseButton;
 	private MyBroadcastReceiver mReceiver;
 
 	@Override
@@ -53,8 +54,9 @@ public final class MainActivity extends Activity {
 		super.onCreate(savedInstanceState);
 		if (DEBUG) Log.v(TAG, "onCreate:");
 		setContentView(R.layout.activity_main);
-		mButton = (ToggleButton)findViewById(R.id.record_button);
-		updateRecording(false);
+		mRecordButton = (ToggleButton)findViewById(R.id.record_button);
+		mPauseButton = (ToggleButton)findViewById(R.id.pause_button);
+		updateRecording(false, false);
 		if (mReceiver == null)
 			mReceiver = new MyBroadcastReceiver(this);
 	}
@@ -64,9 +66,9 @@ public final class MainActivity extends Activity {
 		super.onResume();
 		if (DEBUG) Log.v(TAG, "onResume:");
 		final IntentFilter intentFilter = new IntentFilter();
-		intentFilter.addAction(ScreenRecorderService.ACTION_QUERY_RESULT);
+		intentFilter.addAction(ScreenRecorderService.ACTION_QUERY_STATUS_RESULT);
 		registerReceiver(mReceiver, intentFilter);
-		queryRecording();
+		queryRecordingStatus();
 	}
 
 	@Override
@@ -93,23 +95,38 @@ public final class MainActivity extends Activity {
 	private final OnCheckedChangeListener mOnCheckedChangeListener = new OnCheckedChangeListener() {
 		@Override
 		public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
-			if (isChecked) {
-				final MediaProjectionManager manager
-					= (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-					final Intent permissionIntent = manager.createScreenCaptureIntent();
-			       startActivityForResult(permissionIntent, REQUEST_CODE_SCREEN_CAPTURE);
-			} else {
-				final Intent intent = new Intent(MainActivity.this, ScreenRecorderService.class);
-				intent.setAction(ScreenRecorderService.ACTION_STOP);
-				startService(intent);
+			switch (buttonView.getId()) {
+			case R.id.record_button:
+				if (isChecked) {
+					final MediaProjectionManager manager
+						= (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+						final Intent permissionIntent = manager.createScreenCaptureIntent();
+				       startActivityForResult(permissionIntent, REQUEST_CODE_SCREEN_CAPTURE);
+				} else {
+					final Intent intent = new Intent(MainActivity.this, ScreenRecorderService.class);
+					intent.setAction(ScreenRecorderService.ACTION_STOP);
+					startService(intent);
+				}
+				break;
+			case R.id.pause_button:
+				if (isChecked) {
+					final Intent intent = new Intent(MainActivity.this, ScreenRecorderService.class);
+					intent.setAction(ScreenRecorderService.ACTION_PAUSE);
+					startService(intent);
+				} else {
+					final Intent intent = new Intent(MainActivity.this, ScreenRecorderService.class);
+					intent.setAction(ScreenRecorderService.ACTION_RESUME);
+					startService(intent);
+				}
+				break;
 			}
 		}
 	};
 
-	private void queryRecording() {
+	private void queryRecordingStatus() {
 		if (DEBUG) Log.v(TAG, "queryRecording:");
 		final Intent intent = new Intent(this, ScreenRecorderService.class);
-		intent.setAction(ScreenRecorderService.ACTION_QUERY);
+		intent.setAction(ScreenRecorderService.ACTION_QUERY_STATUS);
 		startService(intent);
 	}
 
@@ -121,13 +138,17 @@ public final class MainActivity extends Activity {
 		startService(intent);
 	}
 
-	private void updateRecording(final boolean isRecording) {
-		if (DEBUG) Log.v(TAG, "updateRecording:isRecording=" + isRecording);
-		mButton.setOnCheckedChangeListener(null);
+	private void updateRecording(final boolean isRecording, final boolean isPausing) {
+		if (DEBUG) Log.v(TAG, "updateRecording:isRecording=" + isRecording + ",isPausing=" + isPausing);
+		mRecordButton.setOnCheckedChangeListener(null);
+		mPauseButton.setOnCheckedChangeListener(null);
 		try {
-			mButton.setChecked(isRecording);
+			mRecordButton.setChecked(isRecording);
+			mPauseButton.setEnabled(isRecording);
+			mPauseButton.setChecked(isPausing);
 		} finally {
-			mButton.setOnCheckedChangeListener(mOnCheckedChangeListener);
+			mRecordButton.setOnCheckedChangeListener(mOnCheckedChangeListener);
+			mPauseButton.setOnCheckedChangeListener(mOnCheckedChangeListener);
 		}
 	}
 
@@ -141,11 +162,12 @@ public final class MainActivity extends Activity {
 		public void onReceive(final Context context, final Intent intent) {
 			if (DEBUG) Log.v(TAG, "onReceive:" + intent);
 			final String action = intent.getAction();
-			if (ScreenRecorderService.ACTION_QUERY_RESULT.equals(action)) {
-				final boolean isRecording = intent.getBooleanExtra(ScreenRecorderService.EXTRA_QUERY_RESULT, false);
+			if (ScreenRecorderService.ACTION_QUERY_STATUS_RESULT.equals(action)) {
+				final boolean isRecording = intent.getBooleanExtra(ScreenRecorderService.EXTRA_QUERY_RESULT_RECORDING, false);
+				final boolean isPausing = intent.getBooleanExtra(ScreenRecorderService.EXTRA_QUERY_RESULT_PAUSING, false);
 				final MainActivity parent = mWeakParent.get();
 				if (parent != null) {
-					parent.updateRecording(isRecording);
+					parent.updateRecording(isRecording, isPausing);
 				}
 			}
 		}
