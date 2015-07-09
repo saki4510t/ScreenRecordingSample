@@ -194,33 +194,39 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 		private final Runnable mDrawTask = new Runnable() {
 			@Override
 			public void run() {
+				boolean local_request_pause;
+				boolean local_request_draw;
 				synchronized (mSync) {
+					local_request_pause = mRequestPause;
+					local_request_draw = requestDraw;
 					if (!requestDraw) {
 						try {
 							mSync.wait(intervals);
+							local_request_pause = mRequestPause;
+							local_request_draw = requestDraw;
+							requestDraw = false;
 						} catch (final InterruptedException e) {
 							return;
 						}
 					}
-					if (mIsCapturing) {
-						if (requestDraw) {
-							requestDraw = false;
-							mSourceTexture.updateTexImage();
-							mSourceTexture.getTransformMatrix(mTexMatrix);
-						}
-						if (!mRequestPause) {
-							mEncoderSurface.makeCurrent();
-					    	mDrawer.drawFrame(mTexId, mTexMatrix);
-					    	mEncoderSurface.swapBuffers();
-						}
-						makeCurrent();
-						GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-						GLES20.glFlush();
-						frameAvailableSoon();
-						queueEvent(this);
-					} else {
-						releaseSelf();
+				}
+				if (mIsCapturing) {
+					if (local_request_draw) {
+						mSourceTexture.updateTexImage();
+						mSourceTexture.getTransformMatrix(mTexMatrix);
 					}
+					if (!local_request_pause) {
+						mEncoderSurface.makeCurrent();
+				    	mDrawer.drawFrame(mTexId, mTexMatrix);
+				    	mEncoderSurface.swapBuffers();
+					}
+					makeCurrent();
+					GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+					GLES20.glFlush();
+					frameAvailableSoon();
+					queueEvent(this);
+				} else {
+					releaseSelf();
 				}
 			}
 		};
