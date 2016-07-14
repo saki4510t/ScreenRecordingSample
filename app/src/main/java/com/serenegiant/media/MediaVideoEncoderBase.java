@@ -1,9 +1,9 @@
 package com.serenegiant.media;
 /*
  * ScreenRecordingSample
- * Sample project to cature and save audio from internal and video from screen as MPEG4 file.
+ * Sample project to capture and save audio from internal and video from screen as MPEG4 file.
  *
- * Copyright (c) 2014-2015 saki t_saki@serenegiant.com
+ * Copyright (c) 2014-2016 saki t_saki@serenegiant.com
  *
  * File name: MediaVideoEncoderBase.java
  *
@@ -22,8 +22,6 @@ package com.serenegiant.media;
  * All files in the folder are under this Apache License, Version 2.0.
 */
 
-import java.io.IOException;
-
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
@@ -31,10 +29,12 @@ import android.media.MediaFormat;
 import android.util.Log;
 import android.view.Surface;
 
+import java.io.IOException;
+
 
 public abstract class MediaVideoEncoderBase extends MediaEncoder {
 	private static final boolean DEBUG = false;	// TODO set false on release
-	private static final String TAG = "MediaVideoEncoderBase";
+	private static final String TAG = MediaVideoEncoderBase.class.getSimpleName();
 
 	// parameters for recording
     private static final float BPP = 0.25f;
@@ -48,10 +48,29 @@ public abstract class MediaVideoEncoderBase extends MediaEncoder {
 		mHeight = height;
 	}
 
-	protected Surface prepare_surface_encoder(final String mime, final int frame_rate)
+	/**
+	 * エンコーダー用のMediaFormatを生成する。prepare_surface_encoder内から呼び出される
+	 * @param mime
+	 * @param frame_rate
+	 * @param bitrate
+	 * @return
+	 */
+	protected MediaFormat create_encoder_format(final String mime, final int frame_rate, final int bitrate) {
+		if (DEBUG) Log.v(TAG, String.format("create_encoder_format:(%d,%d),mime=%s,frame_rate=%d,bitrate=%d", mWidth, mHeight, mime, frame_rate, bitrate));
+        final MediaFormat format = MediaFormat.createVideoFormat(mime, mWidth, mHeight);
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);	// API >= 18
+        format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate > 0 ? bitrate : calcBitRate(frame_rate));
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, frame_rate);
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10);
+		return format;
+	}
+
+	protected Surface prepare_surface_encoder(final String mime, final int frame_rate, final int bitrate)
 		throws IOException, IllegalArgumentException {
 
-        mTrackIndex = -1;
+		if (DEBUG) Log.v(TAG, String.format("prepare_surface_encoder:(%d,%d),mime=%s,frame_rate=%d,bitrate=%d", mWidth, mHeight, mime, frame_rate, bitrate));
+
+		mTrackIndex = -1;
         mMuxerStarted = mIsEOS = false;
 
         final MediaCodecInfo videoCodecInfo = selectVideoCodec(mime);
@@ -60,11 +79,7 @@ public abstract class MediaVideoEncoderBase extends MediaEncoder {
         }
 		if (DEBUG) Log.i(TAG, "selected codec: " + videoCodecInfo.getName());
 
-        final MediaFormat format = MediaFormat.createVideoFormat(mime, mWidth, mHeight);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);	// API >= 18
-        format.setInteger(MediaFormat.KEY_BIT_RATE, calcBitRate(frame_rate));
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, frame_rate);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10);
+        final MediaFormat format = create_encoder_format(mime, frame_rate, bitrate);
 		if (DEBUG) Log.i(TAG, "format: " + format);
 
         mMediaCodec = MediaCodec.createEncoderByType(mime);

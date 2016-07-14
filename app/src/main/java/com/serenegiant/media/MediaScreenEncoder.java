@@ -3,7 +3,7 @@ package com.serenegiant.media;
  * ScreenRecordingSample
  * Sample project to cature and save audio from internal and video from screen as MPEG4 file.
  *
- * Copyright (c) 2015 saki t_saki@serenegiant.com
+ * Copyright (c) 2015-2016 saki t_saki@serenegiant.com
  *
  * File name: MediaScreenEncoder.java
  *
@@ -22,17 +22,20 @@ package com.serenegiant.media;
  * All files in the folder are under this Apache License, Version 2.0.
 */
 
-import java.io.IOException;
-
+import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.graphics.SurfaceTexture.OnFrameAvailableListener;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
+import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.opengl.EGLContext;
 import android.opengl.GLES20;
+import android.opengl.Matrix;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Surface;
 
@@ -41,25 +44,31 @@ import com.serenegiant.glutils.FullFrameRect;
 import com.serenegiant.glutils.Texture2dProgram;
 import com.serenegiant.glutils.WindowSurface;
 
+import java.io.IOException;
+
 public class MediaScreenEncoder extends MediaVideoEncoderBase {
 	private static final boolean DEBUG = false;	// TODO set false on release
-	private static final String TAG = "MediaScreenEncoder";
+	private static final String TAG = MediaScreenEncoder.class.getSimpleName();
 
-	private static final String MIME_TYPE = "video/avc";
+	private static final String MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC;
 	// parameters for recording
     private static final int FRAME_RATE = 25;
 
 	private MediaProjection mMediaProjection;
     private final int mDensity;
+    private final int bitrate, fps;
     private Surface mSurface;
     private final Handler mHandler;
 
 	public MediaScreenEncoder(final MediaMuxerWrapper muxer, final MediaEncoderListener listener,
-		final MediaProjection projection, final int width, final int height, final int density) {
+		final MediaProjection projection, final int width, final int height, final int density,
+		final int _bitrate, final int _fps) {
 
 		super(muxer, listener, width, height);
 		mMediaProjection = projection;
 		mDensity = density;
+		fps = (_fps > 0 && _fps <= 30) ? _fps : FRAME_RATE;
+		bitrate = (_bitrate > 0) ? _bitrate : calcBitRate(_fps);
 		final HandlerThread thread = new HandlerThread(TAG);
 		thread.start();
 		mHandler = new Handler(thread.getLooper());
@@ -74,9 +83,9 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 	@Override
 	void prepare() throws IOException {
 		if (DEBUG) Log.i(TAG, "prepare: ");
-		mSurface = prepare_surface_encoder(MIME_TYPE, FRAME_RATE);
+		mSurface = prepare_surface_encoder(MIME_TYPE, fps, bitrate);
         mMediaCodec.start();
-        mIsCapturing = true;
+        mIsRecording = true;
         new Thread(mScreenCaptureTask, "ScreenCaptureThread").start();
         if (DEBUG) Log.i(TAG, "prepare finishing");
         if (mListener != null) {
@@ -88,15 +97,20 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
         }
 	}
 
+
 	@Override
 	void stopRecording() {
 		if (DEBUG) Log.v(TAG,  "stopRecording:");
 		synchronized (mSync) {
-			mIsCapturing = false;
+			mIsRecording = false;
 			mSync.notifyAll();
 		}
 		super.stopRecording();
 	}
+
+
+	private final Object mSync = new Object();
+	private volatile boolean mIsRecording;
 
 	private boolean requestDraw;
 	private final DrawTask mScreenCaptureTask = new DrawTask(null, 0);
@@ -118,22 +132,23 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 		@Override
 		protected void onStart() {
 		    if (DEBUG) Log.d(TAG,"mScreenCaptureTask#onStart:");
-	    	mDrawer = new FullFrameRect(new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_EXT));
+			mDrawer = new FullFrameRect(new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_EXT));
 			mTexId = mDrawer.createTextureObject();
 			mSourceTexture = new SurfaceTexture(mTexId);
-			mSourceTexture.setDefaultBufferSize(mWidth, mHeight);
+			mSourceTexture.setDefaultBufferSize(mWidth, mHeight);	// これを入れないと映像が取れない
 			mSourceSurface = new Surface(mSourceTexture);
 			mSourceTexture.setOnFrameAvailableListener(mOnFrameAvailableListener, mHandler);
 			mEncoderSurface = new WindowSurface(getEglCore(), mSurface);
 
 	    	if (DEBUG) Log.d(TAG,"setup VirtualDisplay");
-			intervals = (long)(1000f / FRAME_RATE);
+			intervals = (long)(1000f / fps);
 		    display = mMediaProjection.createVirtualDisplay(
 		    	"Capturing Display",
 		    	mWidth, mHeight, mDensity,
 		    	DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-		    	mSourceSurface, null, null);
+		    	mSourceSurface, mCallback, mHandler);
 			if (DEBUG) Log.v(TAG,  "screen capture loop:display=" + display);
+			// 録画タスクを起床
 			queueEvent(mDrawTask);
 		}
 
@@ -179,10 +194,12 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 			return false;
 		}
 
+		// TextureSurfaceで映像を受け取った際のコールバックリスナー
 		private final OnFrameAvailableListener mOnFrameAvailableListener = new OnFrameAvailableListener() {
 			@Override
 			public void onFrameAvailable(final SurfaceTexture surfaceTexture) {
-				if (mIsCapturing) {
+//				if (DEBUG) Log.v(TAG, "onFrameAvailable:mIsRecording=" + mIsRecording);
+				if (mIsRecording) {
 					synchronized (mSync) {
 						requestDraw = true;
 						mSync.notifyAll();
@@ -194,15 +211,13 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 		private final Runnable mDrawTask = new Runnable() {
 			@Override
 			public void run() {
-				boolean local_request_pause;
+//				if (DEBUG) Log.v(TAG, "draw:");
 				boolean local_request_draw;
 				synchronized (mSync) {
-					local_request_pause = mRequestPause;
 					local_request_draw = requestDraw;
 					if (!requestDraw) {
 						try {
 							mSync.wait(intervals);
-							local_request_pause = mRequestPause;
 							local_request_draw = requestDraw;
 							requestDraw = false;
 						} catch (final InterruptedException e) {
@@ -210,16 +225,16 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 						}
 					}
 				}
-				if (mIsCapturing) {
+				if (mIsRecording) {
 					if (local_request_draw) {
 						mSourceTexture.updateTexImage();
 						mSourceTexture.getTransformMatrix(mTexMatrix);
 					}
-					if (!local_request_pause) {
-						mEncoderSurface.makeCurrent();
-				    	mDrawer.drawFrame(mTexId, mTexMatrix);
-				    	mEncoderSurface.swapBuffers();
-					}
+					// SurfaceTextureで受け取った画像をMediaCodecの入力用Surfaceへ描画する
+					mEncoderSurface.makeCurrent();
+					mDrawer.drawFrame(mTexId, mTexMatrix);
+			    	mEncoderSurface.swapBuffers();
+			    	// EGL保持用のオフスクリーンに描画しないとハングアップする機種の為のworkaround
 					makeCurrent();
 					GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 					GLES20.glFlush();
@@ -228,8 +243,43 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 				} else {
 					releaseSelf();
 				}
+//				if (DEBUG) Log.v(TAG, "draw:finished");
 			}
 		};
 
+	}
+
+
+	private final VirtualDisplay.Callback mCallback = new VirtualDisplay.Callback() {
+        /**
+         * Called when the virtual display video projection has been
+         * paused by the system or when the surface has been detached
+         * by the application by calling setSurface(null).
+         * The surface will not receive any more buffers while paused.
+         */
+         @Override
+		public void onPaused() {
+ 			if (DEBUG) Log.v(TAG,  "Callback#onPaused:");
+         }
+
+        /**
+         * Called when the virtual display video projection has been
+         * resumed after having been paused.
+         */
+         @Override
+		public void onResumed() {
+ 			if (DEBUG) Log.v(TAG,  "Callback#onResumed:");
+         }
+
+        /**
+         * Called when the virtual display video projection has been
+         * stopped by the system.  It will no longer receive frames
+         * and it will never be resumed.  It is still the responsibility
+         * of the application to release() the virtual display.
+         */
+        @Override
+		public void onStopped() {
+			if (DEBUG) Log.v(TAG,  "Callback#onStopped:");
+        }
 	};
 }

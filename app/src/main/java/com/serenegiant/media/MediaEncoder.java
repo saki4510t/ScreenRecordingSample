@@ -22,17 +22,17 @@ package com.serenegiant.media;
  * All files in the folder are under this Apache License, Version 2.0.
 */
 
-import java.io.IOException;
-import java.lang.ref.WeakReference;
-import java.nio.ByteBuffer;
-
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.util.Log;
 
+import java.io.IOException;
+import java.lang.ref.WeakReference;
+import java.nio.ByteBuffer;
+
 public abstract class MediaEncoder implements Runnable {
 	private static final boolean DEBUG = false;	// TODO set false on release
-	private static final String TAG = "MediaEncoder";
+	private static final String TAG = MediaEncoder.class.getSimpleName();
 
 	protected static final int TIMEOUT_USEC = 10000;	// 10[msec]
 	protected static final int MSG_FRAME_AVAILABLE = 1;
@@ -83,7 +83,7 @@ public abstract class MediaEncoder implements Runnable {
 
     protected final MediaEncoderListener mListener;
 
-    protected volatile boolean mRequestPause;
+	protected volatile boolean mRequestPause;
 	private long mLastPausedTimeUs;
 
     public MediaEncoder(final MediaMuxerWrapper muxer, final MediaEncoderListener listener) {
@@ -337,7 +337,7 @@ LOOP:	while (mIsCapturing) {
                 }
             } else if (encoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
             	if (DEBUG) Log.v(TAG, "INFO_OUTPUT_BUFFERS_CHANGED");
-                // this shoud not come when encoding
+                // this should not come when encoding
                 encoderOutputBuffers = mMediaCodec.getOutputBuffers();
             } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
             	if (DEBUG) Log.v(TAG, "INFO_OUTPUT_FORMAT_CHANGED");
@@ -374,7 +374,7 @@ LOOP:	while (mIsCapturing) {
                     throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
                 }
                 if ((mBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                	// You shoud set output format to muxer here when you target Android4.3 or less
+                	// You should set output format to muxer here when you target Android4.3 or less
                 	// but MediaCodec#getOutputFormat can not call here(because INFO_OUTPUT_FORMAT_CHANGED don't come yet)
                 	// therefor we should expand and prepare output format from buffer data.
                 	// This sample is for API>=18(>=Android 4.3), just ignore this flag here
@@ -386,7 +386,7 @@ LOOP:	while (mIsCapturing) {
                 	// encoded data is ready, clear waiting counter
             		count = 0;
                     if (!mMuxerStarted) {
-                    	// muxer is not ready...this will prrograming failure.
+                    	// muxer is not ready...this will be programing failure.
                         throw new RuntimeException("drain:muxer hasn't started");
                     }
                     // write encoded data to muxer(need to adjust presentationTimeUs.

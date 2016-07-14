@@ -24,11 +24,13 @@ package com.serenegiant.service;
 
 import java.io.IOException;
 
+import android.annotation.TargetApi;
 import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
@@ -36,10 +38,16 @@ import com.serenegiant.media.MediaAudioEncoder;
 import com.serenegiant.media.MediaEncoder;
 import com.serenegiant.media.MediaMuxerWrapper;
 import com.serenegiant.media.MediaScreenEncoder;
+import com.serenegiant.utils.BuildCheck;
+import com.serenegiant.utils.FileUtils;
 
 public class ScreenRecorderService extends IntentService {
 	private static final boolean DEBUG = false;
 	private static final String TAG = "ScreenRecorderService";
+
+    static {
+    	FileUtils.DIR_NAME = "ScreenRecorder";
+    }
 
 	private static final String BASE = "com.serenegiant.service.ScreenRecorderService.";
 	public static final String ACTION_START = BASE + "ACTION_START";
@@ -65,7 +73,8 @@ public class ScreenRecorderService extends IntentService {
 	public void onCreate() {
 		super.onCreate();
 		if (DEBUG) Log.v(TAG, "onCreate:");
-		mMediaProjectionManager = (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+		if (BuildCheck.isLollipop())
+			mMediaProjectionManager = (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
 	}
 
 	@Override
@@ -105,6 +114,7 @@ public class ScreenRecorderService extends IntentService {
 	 * start screen recording as .mp4 file
 	 * @param intent
 	 */
+	@TargetApi(Build.VERSION_CODES.LOLLIPOP)
 	private void startScreenRecord(final Intent intent) {
 		if (DEBUG) Log.v(TAG, "startScreenRecord:sMuxer=" + sMuxer);
 		synchronized (sSync) {
@@ -114,15 +124,30 @@ public class ScreenRecorderService extends IntentService {
 			    final MediaProjection projection = mMediaProjectionManager.getMediaProjection(resultCode, intent);
 			    if (projection != null) {
 				    final DisplayMetrics metrics = getResources().getDisplayMetrics();
-				    final int density = metrics.densityDpi;
-
-					if (DEBUG) Log.v(TAG, "startRecording:");
+					int width = metrics.widthPixels;
+					int height = metrics.heightPixels;
+					if (width > height) {
+						// 横長
+						final float scale_x = width / 1920f;
+						final float scale_y = height / 1080f;
+						final float scale = Math.max(scale_x,  scale_y);
+						width = (int)(width / scale);
+						height = (int)(height / scale);
+					} else {
+						// 縦長
+						final float scale_x = width / 1080f;
+						final float scale_y = height / 1920f;
+						final float scale = Math.max(scale_x,  scale_y);
+						width = (int)(width / scale);
+						height = (int)(height / scale);
+					}
+					if (DEBUG) Log.v(TAG, String.format("startRecording:(%d,%d)(%d,%d)", metrics.widthPixels, metrics.heightPixels, width, height));
 					try {
 						sMuxer = new MediaMuxerWrapper(".mp4");	// if you record audio only, ".m4a" is also OK.
 						if (true) {
 							// for screen capturing
 							new MediaScreenEncoder(sMuxer, mMediaEncoderListener,
-								projection, metrics.widthPixels, metrics.heightPixels, density);
+								projection, width, height, metrics.densityDpi, 800 * 1024, 15);
 						}
 						if (true) {
 							// for audio capturing

@@ -3,7 +3,7 @@ package com.serenegiant.media;
  * ScreenRecordingSample
  * Sample project to cature and save audio from internal and video from screen as MPEG4 file.
  *
- * Copyright (c) 2014-15 saki t_saki@serenegiant.com
+ * Copyright (c) 2014-2016 saki t_saki@serenegiant.com
  *
  * File name: MediaMuxerWrapper.java
  *
@@ -22,13 +22,6 @@ package com.serenegiant.media;
  * All files in the folder are under this Apache License, Version 2.0.
 */
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.text.SimpleDateFormat;
-import java.util.GregorianCalendar;
-import java.util.Locale;
-
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
@@ -36,12 +29,14 @@ import android.os.Environment;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.serenegiant.utils.FileUtils;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
 public class MediaMuxerWrapper {
 	private static final boolean DEBUG = false;	// TODO set false on release
-	private static final String TAG = "MediaMuxerWrapper";
-
-	private static final String DIR_NAME = "ScreenRecSample";
-    private static final SimpleDateFormat mDateTimeFormat = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US);
+	private static final String TAG = MediaMuxerWrapper.class.getSimpleName();
 
 	private String mOutputPath;
 	private final MediaMuxer mMediaMuxer;	// API >= 18
@@ -58,7 +53,7 @@ public class MediaMuxerWrapper {
 	public MediaMuxerWrapper(String ext) throws IOException {
 		if (TextUtils.isEmpty(ext)) ext = ".mp4";
 		try {
-			mOutputPath = getCaptureFile(Environment.DIRECTORY_MOVIES, ext).toString();
+			mOutputPath = FileUtils.getCaptureFile(Environment.DIRECTORY_MOVIES, ext).toString();
 		} catch (final NullPointerException e) {
 			throw new RuntimeException("This app has no permission of writing external storage");
 		}
@@ -188,36 +183,10 @@ public class MediaMuxerWrapper {
 	 * @param bufferInfo
 	 */
 	/*package*/ synchronized void writeSampleData(final int trackIndex, final ByteBuffer byteBuf, final MediaCodec.BufferInfo bufferInfo) {
-		if (mStatredCount > 0) {
+		if (mStatredCount > 0)
 			mMediaMuxer.writeSampleData(trackIndex, byteBuf, bufferInfo);
-		}
 	}
 
 //**********************************************************************
 //**********************************************************************
-    /**
-     * generate output file
-     * @param type Environment.DIRECTORY_MOVIES / Environment.DIRECTORY_DCIM etc.
-     * @param ext .mp4(.m4a for audio) or .png
-     * @return return null when this app has no writing permission to external storage.
-     */
-    public static final File getCaptureFile(final String type, final String ext) {
-		final File dir = new File(Environment.getExternalStoragePublicDirectory(type), DIR_NAME);
-		Log.d(TAG, "path=" + dir.toString());
-		dir.mkdirs();
-        if (dir.canWrite()) {
-        	return new File(dir, getDateTimeString() + ext);
-        }
-    	return null;
-    }
-
-    /**
-     * get current date and time as String
-     * @return
-     */
-    private static final String getDateTimeString() {
-    	final GregorianCalendar now = new GregorianCalendar();
-    	return mDateTimeFormat.format(now.getTime());
-    }
-
 }
