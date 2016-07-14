@@ -38,3 +38,6 @@ Thumbs.db
 runConfigurations.xml
 *.iml
 .idea/dictionaries
+profiles_settings.xml
+compiler.xml
+Project_Default.xml
