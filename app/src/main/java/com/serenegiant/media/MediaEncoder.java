@@ -226,7 +226,10 @@ public abstract class MediaEncoder implements Runnable {
 			if (!mIsCapturing || mRequestStop) {
 				return;
 			}
-			offsetPTSUs = System.nanoTime() / 1000 - mLastPausedTimeUs;
+			if (mLastPausedTimeUs != 0) {
+				offsetPTSUs = System.nanoTime() / 1000 - mLastPausedTimeUs;
+				mLastPausedTimeUs = 0;
+			}
 			mRequestPause = false;
 			mSync.notifyAll();
 		}
@@ -390,11 +393,11 @@ LOOP:	while (mIsCapturing) {
                         throw new RuntimeException("drain:muxer hasn't started");
                     }
                     // write encoded data to muxer(need to adjust presentationTimeUs.
-//					if (!mRequestPause) {
+					if (!mRequestPause) {
 	                   	mBufferInfo.presentationTimeUs = getPTSUs();
 	                   	muxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
 						prevOutputPTSUs = mBufferInfo.presentationTimeUs;
-//					}
+					}
                 }
                 // return buffer to encoder
                 mMediaCodec.releaseOutputBuffer(encoderStatus, false);
@@ -424,8 +427,11 @@ LOOP:	while (mIsCapturing) {
 		}
 		// presentationTimeUs should be monotonic
 		// otherwise muxer fail to write
-		if (result < prevOutputPTSUs)
-			result = (prevOutputPTSUs - result) + result;
+		if (result < prevOutputPTSUs) {
+			final long offset = prevOutputPTSUs - result;
+			offsetPTSUs -= offset;
+			result += offset;
+		}
 		return result;
     }
 
