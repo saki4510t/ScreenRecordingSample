@@ -22,27 +22,21 @@ package com.serenegiant.media;
  * All files in the folder are under this Apache License, Version 2.0.
 */
 
-import android.content.Context;
-import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.graphics.SurfaceTexture.OnFrameAvailableListener;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
-import android.opengl.EGLContext;
 import android.opengl.GLES20;
-import android.opengl.Matrix;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.Surface;
 
+import com.serenegiant.glutils.EGLBase;
 import com.serenegiant.glutils.EglTask;
-import com.serenegiant.glutils.FullFrameRect;
-import com.serenegiant.glutils.Texture2dProgram;
-import com.serenegiant.glutils.WindowSurface;
+import com.serenegiant.glutils.GLDrawer2D;
 
 import java.io.IOException;
 
@@ -121,24 +115,24 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 		private int mTexId;
 		private SurfaceTexture mSourceTexture;
 		private Surface mSourceSurface;
-    	private WindowSurface mEncoderSurface;
-    	private FullFrameRect mDrawer;
+    	private EGLBase.IEglSurface mEncoderSurface;
+    	private GLDrawer2D mDrawer;
     	private final float[] mTexMatrix = new float[16];
 
-    	public DrawTask(final EGLContext shared_context, final int flags) {
-    		super(shared_context, flags);
+    	public DrawTask(final EGLBase.IContext sharedContext, final int flags) {
+    		super(sharedContext, flags);
     	}
 
 		@Override
 		protected void onStart() {
 		    if (DEBUG) Log.d(TAG,"mScreenCaptureTask#onStart:");
-			mDrawer = new FullFrameRect(new Texture2dProgram(Texture2dProgram.ProgramType.TEXTURE_EXT));
-			mTexId = mDrawer.createTextureObject();
+			mDrawer = new GLDrawer2D(true);
+			mTexId = mDrawer.initTex();
 			mSourceTexture = new SurfaceTexture(mTexId);
 			mSourceTexture.setDefaultBufferSize(mWidth, mHeight);	// これを入れないと映像が取れない
 			mSourceSurface = new Surface(mSourceTexture);
 			mSourceTexture.setOnFrameAvailableListener(mOnFrameAvailableListener, mHandler);
-			mEncoderSurface = new WindowSurface(getEglCore(), mSurface);
+			mEncoderSurface = getEgl().createFromSurface(mSurface);
 
 	    	if (DEBUG) Log.d(TAG,"setup VirtualDisplay");
 			intervals = (long)(1000f / fps);
@@ -190,8 +184,8 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 		}
 
 		@Override
-		protected boolean processRequest(final int request, final int arg1, final Object arg2) {
-			return false;
+		protected Object processRequest(final int request, final int arg1, final int arg2, final Object obj) {
+			return null;
 		}
 
 		// TextureSurfaceで映像を受け取った際のコールバックリスナー
@@ -232,8 +226,8 @@ public class MediaScreenEncoder extends MediaVideoEncoderBase {
 					}
 					// SurfaceTextureで受け取った画像をMediaCodecの入力用Surfaceへ描画する
 					mEncoderSurface.makeCurrent();
-					mDrawer.drawFrame(mTexId, mTexMatrix);
-			    	mEncoderSurface.swapBuffers();
+					mDrawer.draw(mTexId, mTexMatrix, 0);
+			    	mEncoderSurface.swap();
 			    	// EGL保持用のオフスクリーンに描画しないとハングアップする機種の為のworkaround
 					makeCurrent();
 					GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
