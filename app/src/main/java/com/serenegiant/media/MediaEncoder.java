@@ -176,7 +176,7 @@ public abstract class MediaEncoder implements Runnable {
 	}
 
 	/*
-    * prepareing method for each sub class
+    * preparing method for each sub class
     * this method should be implemented in sub class, so set this as abstract method
     * @throws IOException
     */
@@ -235,7 +235,7 @@ public abstract class MediaEncoder implements Runnable {
 //********************************************************************************
 //********************************************************************************
     /**
-     * Release all releated objects
+     * Release all released objects
      */
     protected void release() {
 		if (DEBUG) Log.d(TAG, "release:");
