@@ -22,6 +22,7 @@ package com.serenegiant.media;
  * All files in the folder are under this Apache License, Version 2.0.
 */
 
+import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
@@ -47,13 +48,14 @@ public class MediaMuxerWrapper {
 
 	/**
 	 * Constructor
-	 * @param ext extension of output file
+	 * @param _ext extension of output file
 	 * @throws IOException
 	 */
-	public MediaMuxerWrapper(String ext) throws IOException {
+	public MediaMuxerWrapper(final Context context, final String _ext) throws IOException {
+		String ext = _ext;
 		if (TextUtils.isEmpty(ext)) ext = ".mp4";
 		try {
-			mOutputPath = FileUtils.getCaptureFile(Environment.DIRECTORY_MOVIES, ext).toString();
+			mOutputPath = FileUtils.getCaptureFile(context, Environment.DIRECTORY_MOVIES, ext, 0).toString();
 		} catch (final NullPointerException e) {
 			throw new RuntimeException("This app has no permission of writing external storage");
 		}
@@ -66,21 +68,21 @@ public class MediaMuxerWrapper {
 		return mOutputPath;
 	}
 
-	public void prepare() throws IOException {
+	public synchronized void prepare() throws IOException {
 		if (mVideoEncoder != null)
 			mVideoEncoder.prepare();
 		if (mAudioEncoder != null)
 			mAudioEncoder.prepare();
 	}
 
-	public void startRecording() {
+	public synchronized void startRecording() {
 		if (mVideoEncoder != null)
 			mVideoEncoder.startRecording();
 		if (mAudioEncoder != null)
 			mAudioEncoder.startRecording();
 	}
 
-	public void stopRecording() {
+	public synchronized void stopRecording() {
 		if (mVideoEncoder != null)
 			mVideoEncoder.stopRecording();
 		mVideoEncoder = null;
