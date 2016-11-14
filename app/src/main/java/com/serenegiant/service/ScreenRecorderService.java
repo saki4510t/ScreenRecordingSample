@@ -25,12 +25,18 @@ package com.serenegiant.service;
 import java.io.IOException;
 
 import android.annotation.TargetApi;
-import android.app.IntentService;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
+import android.os.IBinder;
+import android.support.annotation.Nullable;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
@@ -38,15 +44,17 @@ import com.serenegiant.media.MediaAudioEncoder;
 import com.serenegiant.media.MediaEncoder;
 import com.serenegiant.media.MediaMuxerWrapper;
 import com.serenegiant.media.MediaScreenEncoder;
+import com.serenegiant.screenrecordingsample.MainActivity;
+import com.serenegiant.screenrecordingsample.R;
 import com.serenegiant.utils.BuildCheck;
 import com.serenegiant.utils.FileUtils;
 
-public class ScreenRecorderService extends IntentService {
+public class ScreenRecorderService extends Service {
 	private static final boolean DEBUG = false;
 	private static final String TAG = "ScreenRecorderService";
-
+	private static final String APP_DIR_NAME = "ScreenRecorder";
     static {
-    	FileUtils.DIR_NAME = "ScreenRecorder";
+    	FileUtils.DIR_NAME = APP_DIR_NAME;
     }
 
 	private static final String BASE = "com.serenegiant.service.ScreenRecorderService.";
@@ -59,14 +67,16 @@ public class ScreenRecorderService extends IntentService {
 	public static final String EXTRA_RESULT_CODE = BASE + "EXTRA_RESULT_CODE";
 	public static final String EXTRA_QUERY_RESULT_RECORDING = BASE + "EXTRA_QUERY_RESULT_RECORDING";
 	public static final String EXTRA_QUERY_RESULT_PAUSING = BASE + "EXTRA_QUERY_RESULT_PAUSING";
+	private static final int NOTIFICATION = R.string.app_name;
 
-	private static Object sSync = new Object();
+	private static final Object sSync = new Object();
 	private static MediaMuxerWrapper sMuxer;
 
 	private MediaProjectionManager mMediaProjectionManager;
+	private NotificationManager mNotificationManager;
 
 	public ScreenRecorderService() {
-		super(TAG);
+		super();
 	}
 
 	@Override
@@ -75,32 +85,53 @@ public class ScreenRecorderService extends IntentService {
 		if (DEBUG) Log.v(TAG, "onCreate:");
 		if (BuildCheck.isLollipop())
 			mMediaProjectionManager = (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+		mNotificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+		showNotification(TAG);
 	}
 
 	@Override
-	protected void onHandleIntent(final Intent intent) {
-		if (DEBUG) Log.v(TAG, "onHandleIntent:intent=" + intent);
-		final String action = intent.getAction();
+	public void onDestroy() {
+		if (DEBUG) Log.v(TAG, "onDestroy:");
+		super.onDestroy();
+	}
+
+	@Nullable
+	@Override
+	public IBinder onBind(final Intent intent) {
+		return null;
+	}
+
+	@Override
+	public int onStartCommand(final Intent intent, final int flags, final int startId) {
+		if (DEBUG) Log.v(TAG, "onStartCommand:intent=" + intent);
+
+		int result = START_STICKY;
+		final String action = intent != null ? intent.getAction() : null;
 		if (ACTION_START.equals(action)) {
 			startScreenRecord(intent);
 			updateStatus();
-		} else if (ACTION_STOP.equals(action)) {
+		} else if (ACTION_STOP.equals(action) || TextUtils.isEmpty(action)) {
 			stopScreenRecord();
 			updateStatus();
+			result = START_NOT_STICKY;
 		} else if (ACTION_QUERY_STATUS.equals(action)) {
-			updateStatus();
+			if (!updateStatus()) {
+				stopSelf();
+				result = START_NOT_STICKY;
+			}
 		} else if (ACTION_PAUSE.equals(action)) {
 			pauseScreenRecord();
 		} else if (ACTION_RESUME.equals(action)) {
 			resumeScreenRecord();
 		}
+		return result;
 	}
 
-	private void updateStatus() {
+	private boolean updateStatus() {
 		final boolean isRecording, isPausing;
 		synchronized (sSync) {
 			isRecording = (sMuxer != null);
-			isPausing = isRecording ? sMuxer.isPaused() : false;
+			isPausing = isRecording && sMuxer.isPaused();
 		}
 		final Intent result = new Intent();
 		result.setAction(ACTION_QUERY_STATUS_RESULT);
@@ -108,6 +139,7 @@ public class ScreenRecorderService extends IntentService {
 		result.putExtra(EXTRA_QUERY_RESULT_PAUSING, isPausing);
 		if (DEBUG) Log.v(TAG, "sendBroadcast:isRecording=" + isRecording + ",isPausing=" + isPausing);
 		sendBroadcast(result);
+		return isRecording;
 	}
 
 	/**
@@ -143,7 +175,7 @@ public class ScreenRecorderService extends IntentService {
 					}
 					if (DEBUG) Log.v(TAG, String.format("startRecording:(%d,%d)(%d,%d)", metrics.widthPixels, metrics.heightPixels, width, height));
 					try {
-						sMuxer = new MediaMuxerWrapper(".mp4");	// if you record audio only, ".m4a" is also OK.
+						sMuxer = new MediaMuxerWrapper(this, ".mp4");	// if you record audio only, ".m4a" is also OK.
 						if (true) {
 							// for screen capturing
 							new MediaScreenEncoder(sMuxer, mMediaEncoderListener,
@@ -175,6 +207,12 @@ public class ScreenRecorderService extends IntentService {
 				// you should not wait here
 			}
 		}
+		stopForeground(true/*removeNotification*/);
+		if (mNotificationManager != null) {
+			mNotificationManager.cancel(NOTIFICATION);
+			mNotificationManager = null;
+		}
+		stopSelf();
 	}
 
 	private void pauseScreenRecord() {
@@ -207,5 +245,33 @@ public class ScreenRecorderService extends IntentService {
 			if (DEBUG) Log.v(TAG, "onStopped:encoder=" + encoder);
 		}
 	};
+
+//================================================================================
+	/**
+	 * helper method to show/change message on notification area
+	 * and set this service as foreground service to keep alive as possible as this can.
+	 * @param text
+	 */
+	private void showNotification(final CharSequence text) {
+		if (DEBUG) Log.v(TAG, "showNotification:" + text);
+        // Set the info for the views that show in the notification panel.
+        final Notification notification = new Notification.Builder(this)
+			.setSmallIcon(R.drawable.ic_launcher)  // the status icon
+			.setTicker(text)  // the status text
+			.setWhen(System.currentTimeMillis())  // the time stamp
+			.setContentTitle(getText(R.string.app_name))  // the label of the entry
+			.setContentText(text)  // the contents of the entry
+			.setContentIntent(createPendingIntent())  // The intent to send when the entry is clicked
+			.build();
+
+		startForeground(NOTIFICATION, notification);
+        // Send the notification.
+		mNotificationManager.notify(NOTIFICATION, notification);
+    }
+
+	protected PendingIntent createPendingIntent() {
+		FileUtils.DIR_NAME = APP_DIR_NAME;
+		return PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), 0);
+	}
 
 }
