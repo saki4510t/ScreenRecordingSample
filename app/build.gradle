@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion versionCompiler
-   	buildToolsVersion versionBuildTool
+//   	buildToolsVersion versionBuildTool
 
    	compileOptions {
    		sourceCompatibility javaSourceCompatibility
@@ -13,8 +13,8 @@ android {
         applicationId "com.serenegiant.screenrecordingsample"
         minSdkVersion 21
         targetSdkVersion versionTarget
-        versionCode 4
-        versionName "1.2.0"
+        versionCode versionCodeNum
+        versionName versionNameString
     }
 
     buildTypes {
@@ -26,9 +26,9 @@ android {
 }
 
 dependencies {
-	compile fileTree(dir: new File(buildDir, 'libs'), include: '*.jar')
-    compile "com.android.support:support-v4:${supportLibVersion}"
-    compile("com.serenegiant:common:${commonLibVersion}") {
+	implementation fileTree(dir: new File(buildDir, 'libs'), include: '*.jar')
+	implementation "com.android.support:support-v4:${supportLibVersion}"
+	implementation("com.serenegiant:common:${commonLibVersion}") {
    		exclude module: 'support-v4'
    	}
 }
